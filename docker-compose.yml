@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: taskboard
+      POSTGRES_USER: taskboard
+      POSTGRES_PASSWORD: taskboard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskboard -d taskboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      SECRET_KEY: dev-secret-key-not-for-production
+      DEBUG: "True"
+      DATABASE_URL: postgres://taskboard:taskboard@postgres:5432/taskboard
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      AWS_S3_BUCKET_NAME: taskboard-dev-bucket
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    command: sh -c "python manage.py migrate --run-syncdb && gunicorn taskboard.wsgi:application --bind 0.0.0.0:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  celery_worker:
+    build:
+      context: ./backend
+    environment:
+      SECRET_KEY: dev-secret-key-not-for-production
+      DEBUG: "True"
+      DATABASE_URL: postgres://taskboard:taskboard@postgres:5432/taskboard
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      AWS_S3_BUCKET_NAME: taskboard-dev-bucket
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    command: celery -A taskboard worker --loglevel=info
+    depends_on:
+      - backend
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+    command: npm run dev -- --host
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:

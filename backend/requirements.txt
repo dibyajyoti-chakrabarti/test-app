@@ -1,0 +1,11 @@
+django>=4.2
+djangorestframework
+psycopg2-binary
+django-redis
+celery[sqs]
+django-storages[boto3]
+boto3
+dj-database-url
+django-cors-headers
+django-celery-results
+gunicorn
